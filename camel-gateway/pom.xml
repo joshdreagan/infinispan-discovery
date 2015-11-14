@@ -19,9 +19,9 @@ limitations under the License.
   <modelVersion>4.0.0</modelVersion>
 
   <parent>
-  	<groupId>org.apache.camel.examples</groupId>
-  	<artifactId>infinispan-discovery</artifactId>
-  	<version>1.0.0-SNAPSHOT</version>
+    <groupId>org.apache.camel.examples</groupId>
+    <artifactId>infinispan-discovery</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
   </parent>
 
   <artifactId>camel-gateway</artifactId>
@@ -69,6 +69,7 @@ limitations under the License.
       <plugin>
         <groupId>org.apache.camel</groupId>
         <artifactId>camel-maven-plugin</artifactId>
+        <!-- Make sure to run camel:run with the -Djava.net.preferIPv4Stack=true JVM arg (ie, mvn -Djava.net.preferIPv4Stack=true camel:run) -->
       </plugin>
     </plugins>
   </build>
