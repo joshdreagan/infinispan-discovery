@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+                           http://camel.apache.org/schema/spring http://camel.apache.org/schema/spring/camel-spring.xsd">
+
+  <bean id="cachingProvider" class="javax.cache.Caching" factory-method="getCachingProvider"/>
+  
+  <bean id="cacheManager" factory-bean="cachingProvider" factory-method="getCacheManager">
+    <constructor-arg value="META-INF/infinispan/infinispan-clustered.xml"/>
+    <constructor-arg>
+      <bean class="org.springframework.util.ClassUtils" factory-method="getDefaultClassLoader"/>
+    </constructor-arg>
+  </bean>
+  
+  <bean id="registryCache" factory-bean="cacheManager" factory-method="getCache">
+    <constructor-arg value="registry-cache"/>
+  </bean>
+  
+  <bean id="jCacheLoadBalancer" class="org.apache.camel.processor.loadbalancer.JCacheLoadBalancer" init-method="start" destroy-method="stop">
+    <property name="registry" ref="registryCache"/>
+    <property name="groupId" value="/services/soap-http/{http://poc.jboss.org/greeter}GreeterService"/>
+    <property name="delegate" ref="randomLoadBalancer"/>
+    <property name="uriPreProcessor" ref="greeterServiceUriPreProcessor"/>
+  </bean>
+  
+  <bean id="greeterServiceUriPreProcessor" class="org.jboss.poc.greeter.camel.GreeterServiceUriPreProcessor"/>
+  
+  <bean id="randomLoadBalancer" class="org.apache.camel.processor.loadbalancer.RandomLoadBalancer"/>
+  
+  <camelContext id="greeterGateway" trace="false" xmlns="http://camel.apache.org/schema/spring">
+    
+    <route id="proxyRoute">
+      <from uri="jetty:http://localhost:9000/gateway/GreeterService?matchOnUriPrefix=true&amp;bridgeEndpoint=true"/>
+      <loadBalance>
+        <custom ref="jCacheLoadBalancer"/>
+      </loadBalance>
+    </route>
+
+  </camelContext>
+
+</beans>
