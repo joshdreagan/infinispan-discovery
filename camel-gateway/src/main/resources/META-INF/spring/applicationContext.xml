@@ -45,6 +45,18 @@ limitations under the License.
     
     <route id="proxyRoute">
       <from uri="jetty:http://localhost:9000/gateway/GreeterService?matchOnUriPrefix=true&amp;bridgeEndpoint=true"/>
+      <onException>
+        <exception>org.apache.camel.processor.loadbalancer.LoadBalancerUnavailableException</exception>
+        <handled>
+          <constant>true</constant>
+        </handled>
+        <setHeader headerName="CamelHttpResponseCode">
+          <constant>404</constant>
+        </setHeader>
+        <setBody>
+          <constant>NOT FOUND</constant>
+        </setBody>
+      </onException>
       <loadBalance>
         <custom ref="jCacheLoadBalancer"/>
       </loadBalance>

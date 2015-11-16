@@ -36,6 +36,7 @@ import org.apache.camel.CamelContextAware;
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
 import org.apache.camel.Producer;
+import org.apache.camel.Service;
 import org.apache.camel.support.ServiceSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,7 +45,9 @@ import org.springframework.beans.factory.InitializingBean;
 public class JCacheLoadBalancer extends ServiceSupport implements LoadBalancer, CamelContextAware, InitializingBean {
 
   private final Logger log = LoggerFactory.getLogger(JCacheLoadBalancer.class);
-  
+
+  private static final LoadBalancer DEFAULT_DELEGATE = new RoundRobinLoadBalancer();
+
   private Cache<String, Set<String>> registry;
   private String groupId;
   private LoadBalancer delegate;
@@ -53,7 +56,7 @@ public class JCacheLoadBalancer extends ServiceSupport implements LoadBalancer, 
 
   private Map<String, Processor> processorMap;
   private CacheEntryListenerConfiguration<String, Set<String>> registryListenerConfiguration;
-  
+
   private CamelContext camelContext;
 
   public void setRegistry(Cache<String, Set<String>> registry) {
@@ -114,21 +117,29 @@ public class JCacheLoadBalancer extends ServiceSupport implements LoadBalancer, 
   @Override
   public boolean process(Exchange exchange, AsyncCallback callback) {
     if ((getProcessors() == null || getProcessors().isEmpty()) && throwExceptionIfEmpty) {
-      throw new RuntimeException(String.format("No URIs found for service '%s'.", groupId));
+      if (throwExceptionIfEmpty) {
+        exchange.setException(new LoadBalancerUnavailableException(String.format("No URIs found for service '%s'.", groupId)));
+      }
+      callback.done(true);
+      return true;
+    } else {
+      return delegate.process(exchange, callback);
     }
-    return delegate.process(exchange, callback);
   }
 
   @Override
   public void process(Exchange exchange) throws Exception {
     if ((getProcessors() == null || getProcessors().isEmpty()) && throwExceptionIfEmpty) {
-      throw new RuntimeException(String.format("No URIs found for service '%s'.", groupId));
+      throw new LoadBalancerUnavailableException(String.format("No URIs found for service '%s'.", groupId));
     }
     delegate.process(exchange);
   }
 
   @Override
   protected void doStart() throws Exception {
+    if (delegate == DEFAULT_DELEGATE) {
+      ((Service) delegate).start();
+    }
     registry.registerCacheEntryListener(registryListenerConfiguration);
     processUris(registry.get(groupId));
   }
@@ -136,6 +147,9 @@ public class JCacheLoadBalancer extends ServiceSupport implements LoadBalancer, 
   @Override
   protected void doStop() throws Exception {
     registry.deregisterCacheEntryListener(registryListenerConfiguration);
+    if (delegate == DEFAULT_DELEGATE) {
+      ((Service) delegate).stop();
+    }
   }
 
   @Override
@@ -153,15 +167,15 @@ public class JCacheLoadBalancer extends ServiceSupport implements LoadBalancer, 
     Objects.requireNonNull(registry, "The registry property must not be null.");
     Objects.requireNonNull(groupId, "The groupId property must not be null.");
     Objects.requireNonNull(camelContext, "The camelContext property must not be null.");
-    
+
     if (delegate == null) {
-      delegate = new RoundRobinLoadBalancer();
+      delegate = DEFAULT_DELEGATE;
     }
-    
+
     if (throwExceptionIfEmpty == null) {
       throwExceptionIfEmpty = true;
     }
-    
+
     processorMap = new HashMap<>();
     registryListenerConfiguration = new MutableCacheEntryListenerConfiguration<>(new LookupCacheListenerFactory(), null, false, false);
   }
@@ -231,7 +245,7 @@ public class JCacheLoadBalancer extends ServiceSupport implements LoadBalancer, 
       }
     }
   }
-  
+
   private class LookupCacheListenerFactory implements Factory<LookupCacheListener> {
 
     @Override
